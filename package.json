@@ -1,0 +1,3 @@
+{ "name": "shri-sai-seva-site", "version": "2.0.0", "private": true, "description": "Shri Sai Service Seva One – website with database backend", "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node --test test/api.test.js", "backup": "node scripts/backup.js", "reset-admin": "node scripts/reset-admin.js" },
+  "engines": { "node": ">=22.13" } }
