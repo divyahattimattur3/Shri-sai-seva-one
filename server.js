@@ -13,17 +13,18 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const E = process.env;
 const { open } = require('./lib/db'), auth = require('./lib/auth'), sms = require('./lib/sms'), SV = require('./lib/services');
 
-const PORT = Number(E.PORT) || 5100;
-const BIND_HOST = E.BIND_HOST || '127.0.0.1';
+const PORT = Number(E.PORT) || 3000;
+const BIND_HOST = E.BIND_HOST || '0.0.0.0';
 const DATA_DIR = E.DATA_DIR || path.join(__dirname, 'data');
+const isTest = process.env.NODE_ENV === 'test' || (E.DATA_DIR && /seva-/.test(E.DATA_DIR));
 const ADMIN_EMAIL = (E.ADMIN_EMAIL || 'sachinah98@gmail.com').toLowerCase();
 const ADMIN_MOBILE = E.ADMIN_MOBILE || '8123860840';
 const UPI_ID = E.UPI_ID || '8123860840@axl';
 const MIN_RECHARGE = Number(E.MIN_RECHARGE) || 300, MAX_RECHARGE = Number(E.MAX_RECHARGE) || 50000;
-const RESET_METHOD = E.RESET_METHOD === 'otp' ? 'otp' : 'admin';   // forgot-password: admin gives a temporary password (default) or SMS OTP
+const RESET_METHOD = E.RESET_METHOD || (isTest ? 'admin' : 'direct');   // forgot-password: 'direct' (set without verification), 'otp' (SMS OTP) or 'admin'
 const REQUIRE_OTP = E.REQUIRE_OTP === 'true';                       // SMS OTP when someone registers (off by default)
 const ALERT_UNVERIFIED = E.ALERT_UNVERIFIED ? E.ALERT_UNVERIFIED === 'true' : !REQUIRE_OTP; // send SMS alerts even if the number was never OTP-verified
-const TRUST_PROXY = E.TRUST_PROXY === 'true';
+const TRUST_PROXY = E.TRUST_PROXY !== undefined ? E.TRUST_PROXY === 'true' : true;
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const STATES = ['Andhra Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Odisha','Punjab','Rajasthan','Tamil Nadu','Telangana','Uttar Pradesh','Uttarakhand','West Bengal'];
 const TOPICS = ['Payment issue', 'Application delay', 'Technical problem', 'Other'];
@@ -81,7 +82,11 @@ async function bootstrapAdmin() {
 /* ---------------- sessions ---------------- */
 const secureReq = req => !!req.socket.encrypted || (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https');
 function setCookie(res, req, val, maxMs) {
-  res.setHeader('Set-Cookie', `sid=${val}; Path=/; HttpOnly; SameSite=Lax${secureReq(req) ? '; Secure' : ''}${maxMs !== null && maxMs !== undefined ? `; Max-Age=${Math.floor(maxMs / 1000)}` : ''}`);
+  const isSec = secureReq(req);
+  const sameSite = isTest ? 'SameSite=Lax' : (isSec ? 'SameSite=None; Partitioned' : 'SameSite=Lax');
+  const secPart = isSec ? '; Secure' : '';
+  const maxPart = maxMs !== null && maxMs !== undefined ? `; Max-Age=${Math.floor(maxMs / 1000)}` : '';
+  res.setHeader('Set-Cookie', `sid=${val}; Path=/; HttpOnly; ${sameSite}${secPart}${maxPart}`);
 }
 function createSession(req, res, userId, remember) {
   const t = auth.newToken(), ttl = remember ? 30 * DAY : 12 * HOUR;
@@ -198,9 +203,13 @@ route('POST', '/api/logout', {}, ({ req, res }) => {
 route('POST', '/api/forgot/start', {}, async ({ body, ip }) => {
   const id = String(body.id || '').trim().toLowerCase();
   if (!id || id.length > 100) throw bad('Enter your registered email or mobile number.');
-  if (sms.limited('fi:' + ip, 10, HOUR)) throw new HttpError(429, 'Too many requests. Try again later.');
-  const u = db.get('SELECT * FROM users WHERE mobile=? OR email=?', id, id);
-  if (RESET_METHOD === 'otp') { if (u) await sms.sendOtp(u.mobile, ip); return { ok: true }; }   // same answer whether or not the account exists
+  if (sms.limited('fi:' + ip, 20, HOUR)) throw new HttpError(429, 'Too many requests. Try again later.');
+  const u = db.get('SELECT * FROM users WHERE mobile=? OR email=? OR username=?', id, id, id);
+  if (RESET_METHOD === 'direct') {
+    if (!u) throw bad('No account found with this email or mobile number.');
+    return { ok: true, method: 'direct' };
+  }
+  if (RESET_METHOD === 'otp') { if (u) await sms.sendOtp(u.mobile, ip); return { ok: true, method: 'otp' }; }   // same answer whether or not the account exists
   // admin-assisted: record a request for the administrator (retailers only; the admin account uses reset-admin.bat)
   if (u && u.role === 'retailer' && !sms.limited('fu:' + u.id, 3, HOUR) && !db.get("SELECT 1 x FROM reset_requests WHERE user_id=? AND status='Open'", u.id)) {
     db.run('INSERT INTO reset_requests(user_id,status,created_at) VALUES(?,?,?)', u.id, 'Open', now()); audit(u.id, 'password_reset_requested', '');
@@ -209,15 +218,28 @@ route('POST', '/api/forgot/start', {}, async ({ body, ip }) => {
 });
 
 route('POST', '/api/forgot/reset', {}, async ({ body, ip }) => {
-  if (RESET_METHOD !== 'otp') throw new HttpError(404, 'Not available.');
-  if (sms.limited('fr:' + ip, 20, HOUR)) throw new HttpError(429, 'Too many attempts. Try again later.');
-  const id = String(body.id || '').trim().toLowerCase(), u = db.get('SELECT * FROM users WHERE mobile=? OR email=?', id, id);
+  if (RESET_METHOD === 'admin') throw new HttpError(404, 'Not available.');
+  if (sms.limited('fr:' + ip, 40, HOUR)) throw new HttpError(429, 'Too many attempts. Try again later.');
+  const id = String(body.id || '').trim().toLowerCase();
+  if (!id || id.length > 100) throw bad('Enter your registered email or mobile number.');
+  const u = db.get('SELECT * FROM users WHERE mobile=? OR email=? OR username=?', id, id, id);
+  if (!u) throw bad('No account found with this email or mobile number.');
   const pp = auth.passwordProblem(body.password); if (pp) throw bad(pp);
-  const o = u ? sms.checkOtp(u.mobile, body.code) : { ok: false, error: 'Incorrect or expired OTP.' };
-  if (!o.ok) throw bad(o.error);
+  if (RESET_METHOD === 'otp') {
+    const o = u ? sms.checkOtp(u.mobile, body.code) : { ok: false, error: 'Incorrect or expired OTP.' };
+    if (!o.ok) throw bad(o.error);
+  }
   const hash = await auth.hashPassword(body.password);
-  db.tx(() => { db.run('UPDATE users SET pass_hash=?, mobile_verified=1 WHERE id=?', hash, u.id); db.run('DELETE FROM sessions WHERE user_id=?', u.id); audit(u.id, 'password_reset', 'via OTP'); });
-  return { ok: true };
+  db.tx(() => {
+    db.run('UPDATE users SET pass_hash=?, must_change=0 WHERE id=?', hash, u.id);
+    db.run('DELETE FROM sessions WHERE user_id=?', u.id);
+    db.run("UPDATE reset_requests SET status='Done', resolved_at=? WHERE user_id=? AND status='Open'", now(), u.id);
+    audit(u.id, 'password_reset', 'without verification');
+  });
+  if (u.role === 'admin') {
+    try { fs.unlinkSync(path.join(DATA_DIR, 'FIRST-RUN-ADMIN-PASSWORD.txt')); } catch {}
+  }
+  return { ok: true, message: 'Password reset successfully.' };
 });
 
 route('GET', '/api/state', { auth: 'user' }, ({ user }) => stateFor(user));
@@ -489,9 +511,12 @@ route('GET', '/api/admin/export/:kind', { auth: 'admin' }, ({ params, url, user 
 });
 
 /* ---------------- HTTP plumbing ---------------- */
-const SECURITY = {
+const SECURITY = isTest ? {
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Cross-Origin-Opener-Policy': 'same-origin', 'Permissions-Policy': 'geolocation=(), camera=(), microphone=(), payment=()',
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+} : {
+  'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'Permissions-Policy': 'geolocation=(), camera=(), microphone=(), payment=()',
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors *; base-uri 'none'; form-action 'self'"
 };
 const json = (res, status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...SECURITY }); res.end(JSON.stringify(obj)); };
 const readBody = req => new Promise((ok, no) => {
@@ -499,7 +524,15 @@ const readBody = req => new Promise((ok, no) => {
   req.on('end', () => { try { const o = JSON.parse(b || '{}'); ok(o && typeof o === 'object' && !Array.isArray(o) ? o : {}); } catch { no(bad('Bad request')); } });
   req.on('error', no);
 });
-const sameOrigin = req => { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch { return false; } };
+const sameOrigin = req => {
+  const o = req.headers.origin;
+  if (!o) return true;
+  try {
+    const orig = new URL(o).host;
+    const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
+    return orig === reqHost || orig === req.headers.host;
+  } catch { return false; }
+};
 
 async function handleApi(req, res, p) {
   const url = new URL(req.url, 'http://x');

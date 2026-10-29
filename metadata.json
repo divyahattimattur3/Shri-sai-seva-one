@@ -1,0 +1,8 @@
+{
+  "name": "Shri Sai Service Seva One",
+  "description": "Retailer portal for government, card, and print services with wallet recharge, applications management, and admin dashboard.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

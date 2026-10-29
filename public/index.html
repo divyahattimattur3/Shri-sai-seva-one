@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Shri Sai Service Seva One – Retailer Portal</title><style>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Shri Sai Service Seva One – Retailer Portal</title><meta name="description" content="Retailer portal for government, card, and print services with wallet recharge, applications management, and admin dashboard."><meta property="og:title" content="Shri Sai Service Seva One – Retailer Portal"><meta property="og:description" content="Retailer portal for government, card, and print services with wallet recharge, applications management, and admin dashboard."><style>
 :root{--img:url(/bg.jpg);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--sf:#fff;--tx:#1b2440;--mu:#5b6685;--bd:#d9dff0;--bl:#1f6fe5;--rd:#d23f2a;--gr:#1f7a24;--glass:rgba(255,255,255,.9);--ov:rgba(255,255,255,.4);--in:#f6f8fd}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--sf:#1b2347;--tx:#eef1ff;--mu:#a9b3d6;--bd:#36427a;--glass:rgba(22,29,62,.92);--ov:rgba(10,15,40,.6);--in:#232c58}}
 :root[data-theme=dark]{--sf:#1b2347;--tx:#eef1ff;--mu:#a9b3d6;--bd:#36427a;--glass:rgba(22,29,62,.92);--ov:rgba(10,15,40,.6);--in:#232c58}
@@ -106,7 +106,7 @@ function regH(){return `<div class="auth" style="max-width:820px">${authTop("reg
 let SS=null,RG=null;
 
 function forgot(){V("forgot")}
-function fgH(){return `<div class="auth">${authTop("login")}<div class="acard"><h2 style="margin-bottom:6px">Forgot Password?</h2><p style="color:var(--mu);margin:0">Enter your registered details to reset the password</p><label>Registered Email id / Mobile No.</label><input id="fi" placeholder="Email / 10 Digit Mobile No." onkeydown="if(event.key=='Enter')$('fb').click()"><div class="err" id="er"></div><button class="btn w" id="fb" onclick="fgV()">Verify</button><p style="text-align:center;margin-top:16px"><a onclick="V('login')" style="color:var(--tx)">← Back to Login</a></p></div></div>`}
+function fgH(){return `<div class="auth">${authTop("login")}<div class="acard"><h2 style="margin-bottom:6px;text-align:center">Reset Password</h2><p style="color:var(--mu);margin:0 0 16px;text-align:center">Enter your registered details and new password</p><label>Registered Email ID / Mobile Number</label><input id="fi" placeholder="Email / 10 Digit Mobile No." onkeydown="if(event.key=='Enter')$('n1').focus()"><label>New Password (min 8, letters + numbers)</label>${pwf("n1","Enter new password")}<label>Confirm New Password</label>${pwf("n2","Confirm new password")}<div class="err" id="er"></div><button class="btn w gn" id="fb" onclick="doResetPass()">🔑 Update Password</button><p style="text-align:center;margin-top:16px"><a onclick="V('login')" style="color:var(--tx)">← Back to Login</a></p></div></div>`}
 
 const mask=m=>m.slice(0,2)+"****"+m.slice(-4);
 
@@ -235,14 +235,21 @@ function regVerify(){doReg($("ro").value.trim())}
 async function doReg(code){const d=RG,r=await api("/api/register",{name:d.n,mobile:d.m,email:d.e,state:d.st,password:d.p,referral:d.ref,code});
 if(!r.ok){const e=r.d.error||"Registration failed.",x=$("re2")||$("er");if(x)x.textContent=e;return}
 cm();flash="Congratulations.. You are Registered Successfully!";V("login")}
-function fgV(){const k=$("fi").value.trim();if(!k)return $("er").textContent="Enter your registered email or mobile number.";FU=k;$("er").textContent="";$("fi").readOnly=true;const b=$("fb");b.textContent=CFG.resetMethod==="otp"?"Send OTP":"Send request to admin";b.className="btn w gn";b.onclick=fgS}
-
-function rstOtpH(){if(!FU){view="forgot";return fgH()}
-return `<div class="rsl"><div class="card"><h2>Generate New Password</h2><p style="color:var(--mu);margin:0">We received your reset password request.<br>Please enter your new password!</p><div class="flash" style="margin-top:12px" id="nt"><span>OTP sent to your registered mobile &amp; WhatsApp. If not received, please call Admin/Support team.<br>Support: ${esc(ADMIN.mobile)}</span><a onclick="$('nt').remove()">✕</a></div><label>New Password</label>${pwf("n1","Enter new password (min 8, letters + numbers)")}<label>Confirm Password</label>${pwf("n2","Confirm password")}<label>Enter OTP</label><input id="n3" maxlength="6" inputmode="numeric" placeholder="Enter OTP 6 Digit"><div id="rt" class="err"></div><div class="err" id="er"></div><button class="btn w gn" onclick="fgR()">Reset Password</button><p style="text-align:center;margin-top:16px"><a onclick="V('login')" style="color:var(--tx)">← Back to Login</a></p></div><svg class="ill" viewBox="0 0 300 260"><rect x="30" y="50" width="240" height="150" rx="12" fill="#3b6fe0"/><rect x="48" y="68" width="204" height="114" rx="6" fill="#dfe8ff"/><circle cx="150" cy="104" r="22" fill="#e8730c"/><rect x="126" y="132" width="48" height="34" rx="6" fill="#1e3a8a"/><path d="M137 132v-10a13 13 0 0126 0v10" fill="none" stroke="#1e3a8a" stroke-width="5"/><rect x="10" y="204" width="280" height="10" rx="5" fill="#1e3a8a"/></svg></div>`}
-async function fgRe(){await api("/api/forgot/start",{id:FU});toast("OTP resent.");RA=Date.now()+120000}
-async function fgR(){const E=x=>$("er").textContent=x;if(pwProblem($("n1").value))return E(pwProblem($("n1").value));if($("n1").value!==$("n2").value)return E("Passwords do not match.");
-const r=await api("/api/forgot/reset",{id:FU,code:$("n3").value.trim(),password:$("n1").value});if(!r.ok)return E(r.d.error||"Could not reset the password.");
-FU="";flash="Password reset successfully. Please login with your new password.";V("login")}
+async function doResetPass(){const k=$("fi").value.trim(),p1=$("n1").value,p2=$("n2").value,E=x=>$("er").textContent=x;
+if(!k)return E("Enter your registered email or mobile number.");
+if(pwProblem(p1))return E(pwProblem(p1));
+if(p1!==p2)return E("Passwords do not match.");
+$("er").textContent="";
+const b=$("fb");b.disabled=true;b.textContent="Updating...";
+const r=await api("/api/forgot/reset",{id:k,password:p1});
+b.disabled=false;b.textContent="🔑 Update Password";
+if(!r.ok)return E(r.d.error||"Could not update password.");
+flash="Password updated successfully! Please login with your new password.";
+V("login")}
+function fgV(){doResetPass()}
+function rstOtpH(){return fgH()}
+async function fgRe(){toast("Enter your new password below.");}
+async function fgR(){doResetPass()}
 
 /* ---- wallet recharge (UPI QR + UTR, approved by admin) ---- */
 async function pay(){const a=+$("ra").value;if(!Number.isInteger(a)||a<CFG.minRecharge||a>CFG.maxRecharge)return toast("Enter a whole-rupee amount between ₹"+CFG.minRecharge+" and ₹"+CFG.maxRecharge+".");
@@ -315,7 +322,7 @@ async function fgS(){const r=await api("/api/forgot/start",{id:FU});if(!r.ok)ret
 if(CFG.resetMethod==="otp"){toast(CFG.smsDemo?"Demo mode: the OTP is printed in the server window.":"If the account exists, an OTP has been sent to the registered mobile.",7000);RA=Date.now()+120000}
 view="reset";rs()}
 function rstSentH(){return `<div class="auth">${authTop("login")}<div class="acard"><h2>Request sent ✔</h2><p>If an account matches <b>${esc(FU)}</b>, the administrator has been notified.</p><p>They will contact you on your registered mobile number and give you a temporary password. You will be asked to choose a new password the first time you log in.</p><p style="color:var(--mu);font-size:13px">Need help sooner? Call <a href="tel:+91${esc(ADMIN.mobile)}">${esc(ADMIN.mobile)}</a>.</p><button class="btn w" onclick="FU='';V('login')">← Back to Login</button></div></div>`}
-function rstH(){return CFG.resetMethod==="otp"?rstOtpH():rstSentH()}
+function rstH(){return fgH()}
 function vProf(u){return `<h2>Profile</h2><div class="card" style="max-width:560px"><label>Full name</label><input id="pn" value="${esc(u.name)}"><label>Mobile number</label><input id="pm" value="${esc(u.mobile)}" maxlength="10" inputmode="numeric"><label>Email</label><input id="pe" value="${esc(u.email)}"><label>State</label><select id="ps">${STATES.map(s=>`<option ${s===u.state?"selected":""}>${s}</option>`).join("")}</select><label>Username</label><input id="pu" value="${esc(u.username||"")}" placeholder="Choose a username"><label>New password (leave blank to keep)</label>${pwf("pp","New password")}<label>Confirm new password</label>${pwf("pq","Confirm new password")}<label>Current password <small style="color:var(--mu)">(only needed to change your mobile number, email or password)</small></label>${pwf("pc","Current password")}<div class="err" id="er"></div><button class="btn" style="background:#173a8c" onclick="saveP()">SAVE</button></div>`}
 async function saveP(){const u=me(),n=$("pn").value.trim(),m=$("pm").value.trim(),e=$("pe").value.trim(),un=$("pu").value.trim(),p=$("pp").value,c=$("pc").value,E=x=>$("er").textContent=x;
 if(n.length<3)return E("Enter your full name.");if(!/^[6-9]\d{9}$/.test(m))return E("Enter a valid 10-digit mobile number.");if(!/^\S+@\S+\.\S+$/.test(e))return E("Enter a valid email.");
